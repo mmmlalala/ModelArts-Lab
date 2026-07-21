@@ -19,6 +19,11 @@ from ascend_vllm.patch.platform import patch_envs as patch_envs  # noqa: F401
 # internal helpers those patches relied on.
 from ascend_vllm.patch.platform import patch_layernorm as patch_layernorm  # noqa: F401
 from ascend_vllm.patch.platform import patch_chunk_fla as patch_chunk_fla  # noqa: F401
+# Cloud-op switches for Qwen3.5 attention + GDN conv1d. Both read
+# VLLM_ASCEND_DISABLE_CLOUD_OPS_TURBO (registered by patch_envs above) and
+# fall back to the vllm-ascend Triton / AscendC paths when set to 1.
+from ascend_vllm.patch.platform import patch_qwen3_5_attn as patch_qwen3_5_attn  # noqa: F401
+from ascend_vllm.patch.platform import patch_gdn_conv1d as patch_gdn_conv1d  # noqa: F401
 from ascend_vllm.patch.platform import patch_health as patch_health
 from ascend_vllm.patch.platform import (
     patch_disable_completion_tokens_details as patch_disable_completion_tokens_details,
