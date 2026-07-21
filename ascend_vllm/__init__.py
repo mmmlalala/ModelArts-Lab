@@ -70,7 +70,7 @@ def register_model():
 
 
 # ---------------------------------------------------------------------------
-# Meta-path import hook for reliable patch loading.
+# Meta-path import hooks for reliable patch loading.
 #
 # Following the ascend-vllm (v6.5.306) pattern: the hook is installed at
 # ``ascend_vllm`` import time (when vllm loads the platform plugin) and
@@ -80,6 +80,13 @@ def register_model():
 # all platform patches (including cloud_ops_turbo) are applied — regardless of
 # whether ``pre_register_and_update`` is called or ``VLLM_PLUGINS`` filters
 # general_plugins entry points.
+#
+# A second hook on ``vllm_ascend.patch.worker`` re-applies the two patches
+# that target the same methods as vllm_ascend's worker ``patch_qwen3_5``
+# (Qwen3NextAttention.forward and QwenGatedDeltaNetAttention._forward_core).
+# Without this hook, vllm_ascend's worker patches would overwrite our
+# cloud-op switches because ``pre_register_and_update`` applies our platform
+# patches before ``Worker.__init__`` applies the worker patches.
 # ---------------------------------------------------------------------------
 
 
@@ -113,8 +120,54 @@ class _OpsPatchHook(importlib.abc.MetaPathFinder):
         return None
 
 
+class _WorkerPatchLoader(importlib.abc.Loader):
+    def __init__(self, original):
+        self._original = original
+
+    def create_module(self, spec):
+        return self._original.create_module(spec)
+
+    def exec_module(self, module):
+        self._original.exec_module(module)
+        if not _WorkerPatchHook._done:
+            _WorkerPatchHook._done = True
+            # Apply cloud-op switches AFTER vllm_ascend's worker patches
+            # (patch_qwen3_5) have set Qwen3NextAttention.forward and
+            # _GDN_PATCH_TARGET._forward_core, so our patches capture the
+            # ascend versions as _orig_* and layer on top.
+            from ascend_vllm.patch.platform import (
+                patch_gdn_conv1d,  # noqa: F401
+                patch_qwen3_5_attn,  # noqa: F401
+            )
+
+
+class _WorkerPatchHook(importlib.abc.MetaPathFinder):
+    _target = "vllm_ascend.patch.worker"
+    _done = False
+
+    def find_spec(self, name, path, target=None):
+        if name == self._target and not self._done:
+            for f in sys.meta_path:
+                if f is self:
+                    continue
+                spec = f.find_spec(name, path, target)
+                if spec is not None:
+                    spec.loader = _WorkerPatchLoader(spec.loader)
+                    return spec
+        return None
+
+
 if not any(isinstance(f, _OpsPatchHook) for f in sys.meta_path):
     sys.meta_path.insert(0, _OpsPatchHook())
 if _OpsPatchHook._target in sys.modules and not _OpsPatchHook._done:
     _OpsPatchHook._done = True
     import ascend_vllm.patch.platform  # noqa: F401
+
+if not any(isinstance(f, _WorkerPatchHook) for f in sys.meta_path):
+    sys.meta_path.insert(0, _WorkerPatchHook())
+if _WorkerPatchHook._target in sys.modules and not _WorkerPatchHook._done:
+    _WorkerPatchHook._done = True
+    from ascend_vllm.patch.platform import (
+        patch_gdn_conv1d,  # noqa: F401
+        patch_qwen3_5_attn,  # noqa: F401
+    )
