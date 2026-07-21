@@ -123,7 +123,7 @@ def _forward_core_cloud(
             conv_state=self_kv_cache[0],
             bias=self.conv1d.bias,
             query_start_loc=spec_query_start_loc_device,
-            cache_indices=spec_causal_conv1d_meta.cache_indices,
+            cache_indices=spec_causal_conv1d_meta.cache_indices.flatten(),
             num_accepted_tokens=spec_causal_conv1d_meta.num_accepted_tokens.to(
                 torch.int32
             ),
@@ -216,7 +216,7 @@ def _forward_core_cloud(
             conv_state=self_kv_cache[0],
             bias=self.conv1d.bias,
             query_start_loc=non_spec_query_start_loc_device,
-            cache_indices=non_spec_causal_conv1d_meta.cache_indices,
+            cache_indices=non_spec_causal_conv1d_meta.cache_indices.flatten(),
             num_accepted_tokens=None,
             activation_mode=activation_num,
             pad_slot_id=PAD_SLOT_ID,

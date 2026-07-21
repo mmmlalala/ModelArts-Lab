@@ -14,21 +14,20 @@
 # limitations under the License.
 #
 
-"""Patch Qwen3NextAttention.forward to use cloud split_rmsnorm_mrope_gate.
+"""Patch Qwen3NextAttention.forward to use cloud cloud_split_rms_mrope_gate.
 
 When VLLM_ASCEND_DISABLE_CLOUD_OPS_TURBO is 0 (default) and the model is a
-qwen3_5 variant, the fused ``cloud_ops_turbo.split_rmsnorm_mrope_gate``
+qwen3_5 variant, the fused ``cloud_ops_turbo.cloud_split_rms_mrope_gate``
 AscendC operator replaces the Triton ``triton_split_qkv_rmsnorm_mrope``
 path used by vllm-ascend's ``AscendQwen3NextAttention.forward``. For any
 other case (env var set to 1, or non-qwen3_5 model) we delegate to the
 original forward unchanged.
 
-The cloud operator fuses rmsnorm + mrope + qkv split and internally
-applies the ``1.0 + weight`` correction that the Triton path does in
-Python, so we pass ``self.q_norm.weight`` / ``self.k_norm.weight``
-directly (matching the ascend-vllm reference). The call also takes the
-raw ``cos_sin_cache`` and ``positions`` instead of a pre-indexed
-``cos_sin`` tensor.
+The cloud operator ``cloud_split_rms_mrope_gate`` fuses rmsnorm + mrope + qkv split
+and internally applies the ``1.0 + weight`` correction that the Triton path does in
+Python, so we pass ``self.q_norm.weight`` / ``self.k_norm.weight`` directly (matching
+the ascend-vllm reference). The call also takes the raw ``cos_sin_cache`` and
+``positions`` instead of a pre-indexed ``cos_sin`` tensor.
 
 The env var is read at call time (matching patch_chunk_fla.py), so toggling
 it between requests takes effect without re-importing the module.
@@ -74,7 +73,7 @@ def _patched_forward(
     # cloud op applies the (1.0 + weight) correction internally, so we pass
     # the raw norm weights and the cos_sin_cache + positions directly (no
     # pre-indexing, no +1 in Python).
-    q, k, v, gate = torch.ops.cloud_ops_turbo.split_rmsnorm_mrope_gate(
+    q, k, v, gate = torch.ops.cloud_ops_turbo.cloud_split_rms_mrope_gate(
         qkv,
         self.q_norm.weight,
         self.k_norm.weight,
